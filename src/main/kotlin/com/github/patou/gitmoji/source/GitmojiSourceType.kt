@@ -45,8 +45,8 @@ sealed interface GitmojiSourceType {
 
         override val id: Id = Id("conventional-gitmoji")
         override val settingsName: String = "Gitmoji Conventional"
-        override val jsonUrl: String = "https://raw.githubusercontent.com/glazrtom/conventional-gitmoji-intellij-config/refs/heads/master/gitmojis.json"
-        override val localizationUrl: String = "https://raw.githubusercontent.com/glazrtom/conventional-gitmoji-intellij-config/refs/heads/master/localizations/gitmojis-{locale}.yaml"
+        override val jsonUrl: String = "https://raw.githubusercontent.com/glazrtom/conventional-gitmoji-config/refs/heads/master/gitmojis.json"
+        override val localizationUrl: String = "https://raw.githubusercontent.com/glazrtom/conventional-gitmoji-config/refs/heads/master/localizations/gitmojis-{locale}.yaml"
         override val tooltipUrl: String = "https://conventional-gitmoji.web.app/"
         override val tooltipText: String = GitmojiBundle.message("config.source.type.conventionalGitmoji.tooltip")
     }
