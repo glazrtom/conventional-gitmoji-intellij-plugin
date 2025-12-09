@@ -4,6 +4,7 @@ import com.github.patou.gitmoji.source.GitmojiSourceType
 import com.github.patou.gitmoji.source.GitmojiSourceTypeMapper
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.options.Configurable
+import com.intellij.openapi.options.ConfigurationException
 import com.intellij.openapi.options.SearchableConfigurable
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
@@ -142,6 +143,23 @@ class GitMojiConfig(private val project: Project) : SearchableConfigurable {
     }
 
     override fun apply() {
+        val gitmojiSourceConfigId = getCurrentGitmojiSourceId()
+        val jsonUrlCandidate = gitmojiJsonUrlField.text.trim()
+        val localizationCandidate = localizationUrlField.text.trim()
+        val gitmojiSource = GitmojiSourceTypeMapper.fromId(gitmojiSourceConfigId, gitmojiJsonUrlConfig, localizationUrlConfig)
+
+        if (gitmojiSource is GitmojiSourceType.Custom) {
+            if (jsonUrlCandidate.isBlank()) {
+                throw ConfigurationException(GitmojiBundle.message("config.source.error.jsonUrl.empty"))
+            }
+            if (!isValidHttpUrl(jsonUrlCandidate)) {
+                throw ConfigurationException(GitmojiBundle.message("config.source.error.jsonUrl.invalid"))
+            }
+            if (localizationCandidate.isNotBlank() && !isValidHttpUrl(localizationCandidate)) {
+                throw ConfigurationException(GitmojiBundle.message("config.source.error.localizationUrl.invalid"))
+            }
+        }
+
         val wasProjectSettings = useProjectSettingsConfig
         useProjectSettingsConfig = useProjectSettings.isSelected
 
@@ -155,10 +173,9 @@ class GitMojiConfig(private val project: Project) : SearchableConfigurable {
             else -> textAfterUnicodeOptions[textAfterUnicode.selectedIndex]
         }
         languagesConfig = languageOptions[languages.selectedIndex]
-        gitmojiJsonUrlConfig = gitmojiJsonUrlField.text.trim()
-        localizationUrlConfig = localizationUrlField.text.trim()
-        val gitmojiSourceConfigId = getCurrentGitmojiSourceId()
-        gitmojiSourceConfig = GitmojiSourceTypeMapper.fromId(gitmojiSourceConfigId, gitmojiJsonUrlConfig, localizationUrlConfig)
+        gitmojiJsonUrlConfig = jsonUrlCandidate
+        localizationUrlConfig = localizationCandidate
+        gitmojiSourceConfig = gitmojiSource
 
         val projectProps = PropertiesComponent.getInstance(project)
         val appProps = PropertiesComponent.getInstance()
@@ -255,6 +272,16 @@ class GitMojiConfig(private val project: Project) : SearchableConfigurable {
 
     private fun getCurrentGitmojiSourceId(): GitmojiSourceType.Id {
         return (gitmojiSourceField.selectedItem as OptionItem<*>).id as GitmojiSourceType.Id
+    }
+
+    private fun isValidHttpUrl(url: String): Boolean {
+        return try {
+            val uri = URI(url)
+            val scheme = uri.scheme?.lowercase()
+            (scheme == "http" || scheme == "https") && !uri.host.isNullOrBlank()
+        } catch (_: Exception) {
+            false
+        }
     }
 
     override fun createComponent(): JComponent = mainPanel
