@@ -43,8 +43,8 @@ class GitMojiConfig(private val project: Project) : SearchableConfigurable {
     private var languagesConfig:String = "auto"
 
     private val gitmojiSourceField = ComboBox(GitmojiSourceType.OPTIONS)
-    private val gitmojiJsonUrlField = JTextField()
-    private val localizationUrlField = JTextField()
+    private val gitmojiJsonUrlField = JTextField(40)
+    private val localizationUrlField = JTextField(40)
     private var gitmojiJsonPanel: JPanel
     private var localizationPanel: JPanel
     private val sourceTooltipLabel: JLabel = JLabel()
