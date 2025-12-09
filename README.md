@@ -37,7 +37,7 @@ After install, and restart, you will have a button on the commit dialog.
 
 ## Customization
 
-See [custom gitmojis](docs/custom_gitmojis.md) documentation.
+See [custom gitmojis](custom_gitmojis.md) documentation.
 
 ## Contrib
 
