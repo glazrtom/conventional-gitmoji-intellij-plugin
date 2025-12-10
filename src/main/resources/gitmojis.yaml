@@ -72,3 +72,5 @@ gitmojis:
   money-with-wings: Add sponsorships or money related infrastructure.
   thread: Add or update code related to multithreading or concurrency.
   safety-vest: Add or update code related to validation.
+  airplane: Improve offline support.
+  t-rex: Code that adds backwards compatibility.

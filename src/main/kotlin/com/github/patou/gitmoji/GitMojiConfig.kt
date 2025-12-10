@@ -25,7 +25,7 @@ import javax.swing.JTextField
 
 class GitMojiConfig(private val project: Project) : SearchableConfigurable {
     private val mainPanel: JPanel
-    private val useProjectSettings = JCheckBox("Use project-specific settings (instead of global)")
+    private val useProjectSettings = JCheckBox(GitmojiBundle.message("config.useProjectSettings"))
     private val useUnicode = JCheckBox(GitmojiBundle.message("config.useUnicode"))
     private val displayEmoji =
         JCheckBox(GitmojiBundle.message("config.displayEmoji"))

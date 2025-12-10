@@ -6,6 +6,10 @@
 
 - ⬆️ Update versions of dependencies
 - ✨ Configuration global or per project
+- ✨ Customize the set of gitmojis available in the plugin : Gitmoji, Conventional Gitmoji, or a custom source (thanks to @glazrtom)
+- ⬆️ Update gitmoji.json to the last version
+- 🌐 Add translation for last gitmojis
+- 🌐 Add t-rex icon
 
 ## [2.5.0] - 2025-12-01
 
