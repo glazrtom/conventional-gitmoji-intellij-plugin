@@ -1,17 +1,27 @@
 package com.github.patou.gitmoji
 
+import com.github.patou.gitmoji.source.GitmojiSourceType
+import com.github.patou.gitmoji.source.GitmojiSourceTypeMapper
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.options.Configurable
+import com.intellij.openapi.options.ConfigurationException
 import com.intellij.openapi.options.SearchableConfigurable
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.util.Comparing
+import java.awt.Color
+import java.awt.Cursor
+import java.awt.Desktop
 import java.awt.FlowLayout
 import java.awt.GridLayout
+import java.awt.event.MouseAdapter
+import java.awt.event.MouseEvent
+import java.net.URI
 import javax.swing.JCheckBox
 import javax.swing.JComponent
 import javax.swing.JLabel
 import javax.swing.JPanel
+import javax.swing.JTextField
 
 class GitMojiConfig(private val project: Project) : SearchableConfigurable {
     private val mainPanel: JPanel
@@ -33,6 +43,16 @@ class GitMojiConfig(private val project: Project) : SearchableConfigurable {
     private var textAfterUnicodeConfig: String = " "
     private var languagesConfig:String = "auto"
 
+    private val gitmojiSourceField = ComboBox(GitmojiSourceType.OPTIONS)
+    private val gitmojiJsonUrlField = JTextField(40)
+    private val localizationUrlField = JTextField(40)
+    private var gitmojiJsonPanel: JPanel
+    private var localizationPanel: JPanel
+    private val sourceTooltipLabel: JLabel = JLabel()
+    private var gitmojiSourceConfig: GitmojiSourceType = GitmojiSourceType.Gitmoji
+    private var gitmojiJsonUrlConfig: String = ""
+    private var localizationUrlConfig: String = ""
+
     override fun isModified(): Boolean =
         Configurable.isCheckboxModified(useProjectSettings, useProjectSettingsConfig) ||
         Configurable.isCheckboxModified(displayEmoji, displayEmojiConfig == "emoji") ||
@@ -40,10 +60,18 @@ class GitMojiConfig(private val project: Project) : SearchableConfigurable {
         isModified(textAfterUnicode, textAfterUnicodeConfig) ||
         isModified(languages, languagesConfig) ||
         Configurable.isCheckboxModified(insertInCursorPosition, insertInCursorPositionConfig) ||
-        Configurable.isCheckboxModified(includeGitMojiDescription, includeGitMojiDescriptionConfig)
+        Configurable.isCheckboxModified(includeGitMojiDescription, includeGitMojiDescriptionConfig) ||
+        isModified(gitmojiSourceField, gitmojiSourceConfig.id) ||
+        gitmojiJsonUrlField.text != gitmojiJsonUrlConfig ||
+        localizationUrlField.text != localizationUrlConfig
 
     private fun isModified(comboBox: ComboBox<String>, value: String): Boolean {
         return !Comparing.equal(comboBox.selectedItem, value)
+    }
+
+    private fun <T> isModified(comboBox: ComboBox<OptionItem<T>>, value: T): Boolean {
+        val selectedItem = comboBox.selectedItem as? OptionItem<*>
+        return !Comparing.equal(selectedItem?.id, value)
     }
 
     override fun getDisplayName(): String = GitmojiBundle.message("projectName")
@@ -66,9 +94,72 @@ class GitMojiConfig(private val project: Project) : SearchableConfigurable {
         languageJPanel.add(JLabel(GitmojiBundle.message("config.language")))
         languageJPanel.add(languages, null)
         mainPanel.add(languageJPanel)
+
+        // Gitmoji Source Type panel
+        val gitmojiSourcePanel = JPanel(FlowLayout(FlowLayout.LEADING))
+        gitmojiSourcePanel.add(JLabel(GitmojiBundle.message("config.source.type")))
+        gitmojiSourceField.renderer = OptionItemRenderer()
+        gitmojiSourcePanel.add(gitmojiSourceField, null)
+
+        sourceTooltipLabel.text = gitmojiSourceConfig.tooltipText
+        sourceTooltipLabel.font = sourceTooltipLabel.font.deriveFont((sourceTooltipLabel.font.size - 2).toFloat())
+        sourceTooltipLabel.foreground = Color(120, 120, 120)
+        sourceTooltipLabel.toolTipText = gitmojiSourceConfig.tooltipUrl
+        sourceTooltipLabel.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+        sourceTooltipLabel.addMouseListener(object : MouseAdapter() {
+            override fun mouseClicked(e: MouseEvent) {
+                try {
+                    val url = sourceTooltipLabel.toolTipText
+                    if (!url.isNullOrBlank() && Desktop.isDesktopSupported()) {
+                        Desktop.getDesktop().browse(URI(url))
+                    }
+                } catch (_: Exception) {
+                    // ignore errors opening link
+                }
+            }
+        })
+
+        gitmojiSourcePanel.add(sourceTooltipLabel)
+        mainPanel.add(gitmojiSourcePanel)
+
+        gitmojiSourceField.addItemListener {
+            val selectedId = getCurrentGitmojiSourceId()
+            val type = GitmojiSourceTypeMapper.fromId(selectedId, gitmojiJsonUrlField.text.trim(), localizationUrlField.text.trim())
+            setGitmojiSourceFieldsVisibility(type)
+            updateSourceTooltip(type)
+        }
+
+        // Gitmoji JSON URL panel
+        gitmojiJsonPanel = JPanel(FlowLayout(FlowLayout.LEADING))
+        gitmojiJsonPanel.add(JLabel(GitmojiBundle.message("config.source.jsonUrl")))
+        gitmojiJsonPanel.add(gitmojiJsonUrlField, null)
+        mainPanel.add(gitmojiJsonPanel)
+
+        // Localization URL panel
+        localizationPanel = JPanel(FlowLayout(FlowLayout.LEADING))
+        localizationPanel.add(JLabel(GitmojiBundle.message("config.source.localizationUrl")))
+        localizationPanel.add(localizationUrlField, null)
+        mainPanel.add(localizationPanel)
     }
 
     override fun apply() {
+        val gitmojiSourceConfigId = getCurrentGitmojiSourceId()
+        val jsonUrlCandidate = gitmojiJsonUrlField.text.trim()
+        val localizationCandidate = localizationUrlField.text.trim()
+        val gitmojiSource = GitmojiSourceTypeMapper.fromId(gitmojiSourceConfigId, gitmojiJsonUrlConfig, localizationUrlConfig)
+
+        if (gitmojiSource is GitmojiSourceType.Custom) {
+            if (jsonUrlCandidate.isBlank()) {
+                throw ConfigurationException(GitmojiBundle.message("config.source.error.jsonUrl.empty"))
+            }
+            if (!isValidHttpUrl(jsonUrlCandidate)) {
+                throw ConfigurationException(GitmojiBundle.message("config.source.error.jsonUrl.invalid"))
+            }
+            if (localizationCandidate.isNotBlank() && !isValidHttpUrl(localizationCandidate)) {
+                throw ConfigurationException(GitmojiBundle.message("config.source.error.localizationUrl.invalid"))
+            }
+        }
+
         val wasProjectSettings = useProjectSettingsConfig
         useProjectSettingsConfig = useProjectSettings.isSelected
 
@@ -82,6 +173,9 @@ class GitMojiConfig(private val project: Project) : SearchableConfigurable {
             else -> textAfterUnicodeOptions[textAfterUnicode.selectedIndex]
         }
         languagesConfig = languageOptions[languages.selectedIndex]
+        gitmojiJsonUrlConfig = jsonUrlCandidate
+        localizationUrlConfig = localizationCandidate
+        gitmojiSourceConfig = gitmojiSource
 
         val projectProps = PropertiesComponent.getInstance(project)
         val appProps = PropertiesComponent.getInstance()
@@ -96,13 +190,18 @@ class GitMojiConfig(private val project: Project) : SearchableConfigurable {
         propsToSave.setValue(CONFIG_INCLUDE_GITMOJI_DESCRIPTION, includeGitMojiDescriptionConfig)
         propsToSave.setValue(CONFIG_AFTER_UNICODE, textAfterUnicodeConfig)
         propsToSave.setValue(CONFIG_LANGUAGE, languagesConfig)
+        propsToSave.setValue(CONFIG_GITMOJI_SOURCE_TYPE, gitmojiSourceConfig.id.value)
+        propsToSave.setValue(CONFIG_GITMOJI_JSON_URL, gitmojiJsonUrlConfig)
+        propsToSave.setValue(CONFIG_LOCALIZATION_URL, localizationUrlConfig)
 
         // If we just unchecked, remove project settings
         if (wasProjectSettings && !useProjectSettingsConfig) {
             clearProjectSettings(projectProps)
         }
 
-        GitmojiLocale.loadTranslations()
+        GitmojiLocale.loadTranslations(project)
+        Gitmojis.gitmojis.clear()
+        Gitmojis.ensureGitmojisLoaded(project)
     }
 
     private fun clearProjectSettings(props: PropertiesComponent) {
@@ -113,6 +212,9 @@ class GitMojiConfig(private val project: Project) : SearchableConfigurable {
             props.unsetValue(CONFIG_INCLUDE_GITMOJI_DESCRIPTION)
             props.unsetValue(CONFIG_AFTER_UNICODE)
             props.unsetValue(CONFIG_LANGUAGE)
+            props.unsetValue(CONFIG_GITMOJI_SOURCE_TYPE)
+            props.unsetValue(CONFIG_GITMOJI_JSON_URL)
+            props.unsetValue(CONFIG_LOCALIZATION_URL)
         } catch (_: Exception) {
             // Ignore errors during cleanup
         }
@@ -135,6 +237,10 @@ class GitMojiConfig(private val project: Project) : SearchableConfigurable {
         includeGitMojiDescriptionConfig = props.getBoolean(CONFIG_INCLUDE_GITMOJI_DESCRIPTION, false)
         textAfterUnicodeConfig = props.getValue(CONFIG_AFTER_UNICODE, " ")
         languagesConfig = props.getValue(CONFIG_LANGUAGE, "auto")
+        gitmojiJsonUrlConfig = props.getValue(CONFIG_GITMOJI_JSON_URL, "")
+        localizationUrlConfig = props.getValue(CONFIG_LOCALIZATION_URL, "")
+        val gitmojiSourceConfigId = (props.getValue(CONFIG_GITMOJI_SOURCE_TYPE, GitmojiSourceType.Gitmoji.id.value)).let(GitmojiSourceType::Id)
+        gitmojiSourceConfig = GitmojiSourceTypeMapper.fromId(gitmojiSourceConfigId, gitmojiJsonUrlConfig, localizationUrlConfig)
 
         displayEmoji.isSelected = displayEmojiConfig == "emoji"
         useUnicode.isSelected = useUnicodeConfig
@@ -144,7 +250,37 @@ class GitMojiConfig(private val project: Project) : SearchableConfigurable {
             -1 -> if (textAfterUnicodeConfig == " ") 1 else 0
             else -> textAfterUnicodeOptions.indexOf(textAfterUnicodeConfig)
         }
-        languages.selectedIndex = languageOptions.indexOf(languagesConfig)
+        languages.selectedIndex = languageOptions.indexOf(languagesConfig).coerceAtLeast(0)
+        gitmojiSourceField.selectedIndex = GitmojiSourceType.OPTIONS.indexOfFirst { it.id == gitmojiSourceConfig.id }.coerceAtLeast(0)
+        gitmojiJsonUrlField.text = gitmojiJsonUrlConfig
+        localizationUrlField.text = localizationUrlConfig
+        setGitmojiSourceFieldsVisibility(gitmojiSourceConfig)
+        updateSourceTooltip(gitmojiSourceConfig)
+    }
+
+    private fun setGitmojiSourceFieldsVisibility(type: GitmojiSourceType) {
+        val gitmojiSourceFieldsVisibility = type.id == GitmojiSourceType.Custom.ID
+        gitmojiJsonPanel.isVisible = gitmojiSourceFieldsVisibility
+        localizationPanel.isVisible = gitmojiSourceFieldsVisibility
+    }
+
+    private fun updateSourceTooltip(type: GitmojiSourceType) {
+        sourceTooltipLabel.text = type.tooltipText
+        sourceTooltipLabel.toolTipText = type.tooltipUrl
+    }
+
+    private fun getCurrentGitmojiSourceId(): GitmojiSourceType.Id {
+        return (gitmojiSourceField.selectedItem as OptionItem<*>).id as GitmojiSourceType.Id
+    }
+
+    private fun isValidHttpUrl(url: String): Boolean {
+        return try {
+            val uri = URI(url.replace("{locale}", "en_US"))
+            val scheme = uri.scheme?.lowercase()
+            (scheme == "http" || scheme == "https") && !uri.host.isNullOrBlank()
+        } catch (_: Exception) {
+            false
+        }
     }
 
     override fun createComponent(): JComponent = mainPanel
